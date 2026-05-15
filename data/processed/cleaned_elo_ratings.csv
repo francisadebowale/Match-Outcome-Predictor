@@ -1,0 +1,243 @@
+rank,team,elo
+1,Spain,2165
+2,Argentina,2113
+3,France,2081
+4,England,2020
+5,Brazil,1988
+6,Portugal,1984
+7,Colombia,1975
+8,Netherlands,1961
+9,Ecuador,1935
+10,Croatia,1930
+11,Germany,1925
+12,Norway,1912
+13,Japan,1906
+14,Turkey,1902
+15,Switzerland,1894
+16,Uruguay,1892
+17,Denmark,1869
+18,Mexico,1868
+19,Belgium,1867
+20,Senegal,1866
+21,Italy,1856
+22,Paraguay,1833
+23,Austria,1827
+24,Morocco,1822
+25,Ukraine,1785
+26,Canada,1784
+27,Australia,1775
+28,Scotland,1770
+29,Nigeria,1769
+30,Russia,1766
+31,Iran,1764
+32,South Korea,1756
+33,Greece,1752
+34,Algeria,1743
+35,Serbia,1742
+36,United States,1733
+36,Panama,1733
+36,Czech Republic,1733
+39,Uzbekistan,1727
+39,Venezuela,1727
+41,Sweden,1719
+42,Kosovo,1714
+43,Poland,1711
+44,Chile,1710
+45,Hungary,1703
+46,Egypt,1699
+47,Wales,1698
+48,Peru,1695
+49,Slovenia,1694
+49,Ireland,1694
+51,Jordan,1685
+52,Ivory Coast,1676
+53,Slovakia,1673
+54,Dem. Rep. of Congo,1655
+55,Georgia,1653
+56,Albania,1646
+57,Bolivia,1645
+58,Tunisia,1636
+59,Israel,1634
+60,Romania,1627
+61,Costa Rica,1614
+61,Cameroon,1614
+63,Iraq,1608
+64,Northern Ireland,1601
+65,Mali,1596
+66,North Macedonia,1592
+67,Bosnia and Herzegovina,1591
+68,New Zealand,1585
+69,Cape Verde,1576
+70,Honduras,1571
+71,Iceland,1569
+72,Saudi Arabia,1566
+73,Angola,1541
+74,Finland,1540
+74,United Arab Emirates,1540
+76,Haiti,1532
+77,Burkina Faso,1530
+78,Jamaica,1527
+79,South Africa,1517
+80,Guatemala,1515
+81,Belarus,1513
+82,Ghana,1503
+83,Syria,1491
+84,Oman,1490
+85,Bulgaria,1475
+86,Palestine,1470
+87,Guinea,1469
+88,Northern Cyprus,1457
+89,Montenegro,1439
+90,Luxembourg,1436
+91,Curaçao,1433
+92,Suriname,1431
+93,Kazakhstan,1430
+94,Benin,1429
+95,Kurdistan,1425
+96,China,1423
+96,Qatar,1423
+98,Libya,1420
+99,Gambia,1419
+100,Bahrain,1417
+101,Gabon,1401
+102,Uganda,1394
+103,Niger,1393
+104,Equatorial Guinea,1390
+105,Trinidad and Tobago,1388
+106,Faroe Islands,1382
+106,Madagascar,1382
+108,Armenia,1379
+109,Thailand,1376
+110,North Korea,1373
+111,Mozambique,1372
+111,Zimbabwe,1372
+113,Zambia,1370
+114,Comoros,1362
+115,Togo,1358
+116,Kenya,1356
+117,Vietnam,1351
+118,Sudan,1350
+119,Sierra Leone,1348
+120,Reunion,1346
+121,El Salvador,1342
+122,Azerbaijan,1340
+123,Estonia,1339
+124,Guadeloupe,1338
+125,Rwanda,1336
+126,Nicaragua,1334
+127,Lebanon,1332
+128,Indonesia,1331
+129,Kuwait,1330
+130,Zanzibar,1326
+131,Tanzania,1313
+132,Martinique,1312
+133,Mauritania,1311
+134,Namibia,1303
+135,Latvia,1301
+135,Cyprus,1301
+137,Liberia,1296
+138,Malaysia,1293
+139,Guyana,1292
+140,Kyrgyzstan,1291
+141,Lithuania,1290
+142,New Caledonia,1286
+143,Burundi,1285
+143,Ethiopia,1285
+143,Tajikistan,1285
+146,Dominican Republic,1284
+147,Botswana,1267
+148,Moldova,1262
+149,Guinea-Bissau,1248
+150,Malawi,1241
+151,Cuba,1239
+151,Central African Republic,1239
+153,Malta,1237
+154,French Guiana,1221
+155,Mayotte,1217
+156,Turkmenistan,1209
+157,Congo,1206
+158,Lesotho,1205
+159,Eritrea,1201
+160,Tahiti,1179
+161,Philippines,1167
+162,Yemen,1151
+163,Eswatini,1149
+164,Saint Vincent and the Grenadines,1141
+165,Singapore,1139
+166,Puerto Rico,1138
+167,Papua New Guinea,1136
+168,India,1128
+169,Hong Kong,1120
+170,Bermuda,1119
+171,Vanuatu,1114
+172,South Sudan,1109
+173,Fiji,1108
+174,Grenada,1098
+175,Andorra,1076
+176,Chad,1073
+176,Belize,1073
+176,Mauritius,1073
+179,Solomon Islands,1054
+180,Saint Martin,1042
+181,São Tomé e Príncipe,1035
+182,Saint Kitts and Nevis,1029
+183,Afghanistan,1011
+184,Saint Lucia,1003
+185,Somaliland,1002
+185,Gibraltar,1002
+187,Western Sahara,996
+188,Myanmar,982
+189,Somalia,979
+189,Aruba,979
+191,Sint Maarten,975
+192,Montserrat,972
+193,Greenland,946
+194,Djibouti,940
+195,Dominica,934
+196,Bangladesh,932
+197,Liechtenstein,904
+198,Monaco,903
+199,Barbados,898
+200,Antigua and Barbuda,894
+201,Nepal,893
+202,Seychelles,853
+203,Maldives,848
+204,Cambodia,846
+205,Bonaire,836
+205,San Marino,836
+207,Sri Lanka,827
+208,Chinese Taipei,821
+209,Pakistan,812
+210,Cayman Islands,805
+211,Chagos Islands,785
+212,Sint Eustatius,757
+213,Tuvalu,756
+214,Laos,734
+215,Samoa,730
+216,Mongolia,727
+216,British Virgin Islands,727
+218,Saint Barthelemy,725
+219,Guam,718
+220,Wallis and Futuna,701
+221,Vatican,692
+222,Bahamas,685
+223,Saint Pierre and Miquelon,677
+224,Timor-Leste,673
+225,Saba,671
+226,Turks and Caicos,658
+227,Anguilla,646
+228,Bhutan,636
+229,Brunei,633
+230,Tibet,630
+231,US Virgin Islands,628
+232,Cook Islands,623
+233,Macau,588
+234,Falkland Islands,571
+235,Micronesia,564
+236,Marshall Islands,559
+237,Kiribati,545
+238,Tonga,521
+239,Niue,496
+240,Northern Mariana Islands,432
+241,Palau,403
+242,American Samoa,369
