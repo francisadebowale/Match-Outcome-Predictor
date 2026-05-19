@@ -5,6 +5,7 @@ import pandas as pd
 
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
+TEAM_NAME_MAP_PATH = RAW_DIR / "team_name_map.csv"
 
 
 def clean_international_results():
@@ -19,6 +20,7 @@ def clean_international_results():
     results["home_score"] = results["home_score"].astype(int)
     results["away_score"] = results["away_score"].astype(int)
     results["neutral"] = results["neutral"].astype(bool)
+    results = apply_team_name_map(results, ["home_team", "away_team"])
 
     results["result"] = results.apply(get_match_result, axis=1)
 
@@ -40,6 +42,7 @@ def clean_elo_ratings():
     elo["rank"] = elo["rank"].astype(int)
     elo["elo"] = elo["elo"].astype(int)
     elo["team"] = elo["team"].str.strip()
+    elo = apply_team_name_map(elo, ["team"])
 
     elo = elo.sort_values("rank").reset_index(drop=True)
     elo.to_csv(output_path, index=False)
@@ -127,6 +130,7 @@ def clean_single_world_cup_file(world_cup, source_file):
 
     world_cup["home_goals"] = world_cup["home_goals"].astype(int)
     world_cup["away_goals"] = world_cup["away_goals"].astype(int)
+    world_cup = apply_team_name_map(world_cup, ["home_team", "away_team"])
 
     world_cup["result"] = world_cup.apply(
         lambda row: get_match_result(
@@ -149,6 +153,21 @@ def normalize_columns(columns):
         .str.lower()
         .str.replace(" ", "_", regex=False)
     )
+
+
+def apply_team_name_map(dataframe, columns):
+    if not TEAM_NAME_MAP_PATH.exists():
+        return dataframe
+
+    name_map = pd.read_csv(TEAM_NAME_MAP_PATH)
+    name_map = dict(zip(name_map["source_name"], name_map["standard_name"]))
+
+    dataframe = dataframe.copy()
+
+    for column in columns:
+        dataframe[column] = dataframe[column].str.strip().replace(name_map)
+
+    return dataframe
 
 
 def get_match_result(row):
