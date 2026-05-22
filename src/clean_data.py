@@ -191,11 +191,11 @@ def normalize_columns(columns):
     )
 
 
-def apply_team_name_map(dataframe, columns):
-    if not TEAM_NAME_MAP_PATH.exists():
+def apply_team_name_map(dataframe, columns, team_name_map_path=TEAM_NAME_MAP_PATH):
+    if not Path(team_name_map_path).exists():
         return dataframe
 
-    name_map = pd.read_csv(TEAM_NAME_MAP_PATH)
+    name_map = pd.read_csv(team_name_map_path)
     name_map = dict(zip(name_map["source_name"], name_map["standard_name"]))
 
     dataframe = dataframe.copy()
