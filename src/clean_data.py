@@ -50,6 +50,42 @@ def clean_elo_ratings():
     print(f"Saved {len(elo)} rows to {output_path}")
 
 
+def clean_elo_snapshots():
+    clean_elo_snapshot_file(
+        RAW_DIR / "elo" / "elo_ratings_by_year.csv",
+        PROCESSED_DIR / "cleaned_elo_ratings_by_year.csv",
+    )
+    clean_elo_snapshot_file(
+        RAW_DIR / "elo" / "elo_rankings_for_world_cup_2026.csv",
+        PROCESSED_DIR / "cleaned_elo_rankings_for_world_cup_2026.csv",
+    )
+
+
+def clean_elo_snapshot_file(input_path, output_path):
+    if not input_path.exists():
+        print(f"Skipping missing Elo file: {input_path}")
+        return
+
+    elo = pd.read_csv(input_path)
+
+    elo = elo.drop(columns=["change"], errors="ignore")
+    elo = elo.dropna(subset=["snapshot_date", "team", "elo"])
+
+    elo["snapshot_date"] = pd.to_datetime(elo["snapshot_date"], errors="coerce")
+    elo = elo.dropna(subset=["snapshot_date"])
+    elo["snapshot_date"] = elo["snapshot_date"].dt.date.astype(str)
+
+    elo["rank"] = elo["rank"].astype(int)
+    elo["elo"] = elo["elo"].astype(int)
+    elo["team"] = elo["team"].str.strip()
+    elo = apply_team_name_map(elo, ["team"])
+
+    elo = elo.sort_values(["snapshot_date", "rank"]).reset_index(drop=True)
+    elo.to_csv(output_path, index=False)
+
+    print(f"Saved {len(elo)} rows to {output_path}")
+
+
 def clean_world_cup_files():
     input_dir = RAW_DIR / "world_cup"
     output_path = PROCESSED_DIR / "cleaned_world_cup_matches.csv"
@@ -183,6 +219,7 @@ def main():
 
     clean_international_results()
     clean_elo_ratings()
+    clean_elo_snapshots()
     clean_world_cup_files()
 
 
