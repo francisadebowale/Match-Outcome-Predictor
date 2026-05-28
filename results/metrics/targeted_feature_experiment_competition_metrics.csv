@@ -1,0 +1,7 @@
+experiment,competition_category,rows,accuracy,macro_f1,log_loss
+experiment_2_tournament_context,continental_tournament,362,0.5524861878453039,0.5283157746874562,0.9341387366573762
+experiment_2_tournament_context,friendly,1132,0.5627208480565371,0.4985025872697106,0.9118341673041244
+experiment_2_tournament_context,other,433,0.5612009237875288,0.4970984209922263,0.9095411232385852
+experiment_2_tournament_context,regional_qualifier_or_nations_league,1278,0.582942097026604,0.5097743329209511,0.8976589580286919
+experiment_2_tournament_context,world_cup,64,0.578125,0.46494708994708994,1.0797509489180093
+experiment_2_tournament_context,world_cup_qualifier,952,0.6228991596638656,0.5682716655339929,0.8103765260329969
