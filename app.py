@@ -29,6 +29,62 @@ FEATURE_SET = [
     "away_goals_against_avg",
 ]
 
+TEAM_FLAGS = {
+    "Algeria": "DZ",
+    "Argentina": "AR",
+    "Australia": "AU",
+    "Austria": "AT",
+    "Belgium": "BE",
+    "Bosnia and Herzegovina": "BA",
+    "Brazil": "BR",
+    "Canada": "CA",
+    "Cape Verde": "CV",
+    "Colombia": "CO",
+    "Croatia": "HR",
+    "Curaçao": "CW",
+    "Czech Republic": "CZ",
+    "Dem. Rep. of Congo": "CD",
+    "Ecuador": "EC",
+    "Egypt": "EG",
+    "England": "GB-ENG",
+    "France": "FR",
+    "Germany": "DE",
+    "Ghana": "GH",
+    "Haiti": "HT",
+    "Iran": "IR",
+    "Iraq": "IQ",
+    "Ivory Coast": "CI",
+    "Japan": "JP",
+    "Jordan": "JO",
+    "Mexico": "MX",
+    "Morocco": "MA",
+    "Netherlands": "NL",
+    "New Zealand": "NZ",
+    "Norway": "NO",
+    "Panama": "PA",
+    "Paraguay": "PY",
+    "Portugal": "PT",
+    "Qatar": "QA",
+    "Saudi Arabia": "SA",
+    "Scotland": "GB-SCT",
+    "Senegal": "SN",
+    "South Africa": "ZA",
+    "South Korea": "KR",
+    "Spain": "ES",
+    "Sweden": "SE",
+    "Switzerland": "CH",
+    "Tunisia": "TN",
+    "Turkey": "TR",
+    "United States": "US",
+    "Uruguay": "UY",
+    "Uzbekistan": "UZ",
+}
+
+SUBDIVISION_FLAGS = {
+    "GB-ENG": "\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F",
+    "GB-SCT": "\U0001F3F4\U000E0067\U000E0062\U000E0073\U000E0063\U000E0074\U000E007F",
+}
+
 
 st.set_page_config(
     page_title="World Cup Match Outcome Predictor",
@@ -219,6 +275,44 @@ def render_page_header(title, caption):
     )
 
 
+def country_code_to_flag(country_code):
+    if not country_code:
+        return ""
+    if country_code in SUBDIVISION_FLAGS:
+        return SUBDIVISION_FLAGS[country_code]
+    if len(country_code) != 2:
+        return ""
+
+    base = 127397
+    return "".join(chr(base + ord(character)) for character in country_code.upper())
+
+
+def team_label(team):
+    flag = country_code_to_flag(TEAM_FLAGS.get(str(team), ""))
+    if not flag:
+        return str(team)
+    return f"{flag} {team}"
+
+
+def team_options(teams):
+    return {team_label(team): team for team in sorted(set(teams))}
+
+
+def add_team_display_columns(data, columns):
+    display = data.copy()
+    for column in columns:
+        if column in display.columns:
+            display[f"{column}_display"] = display[column].map(team_label)
+    return display
+
+
+def add_chart_team_labels(data, team_column="team"):
+    display = data.copy()
+    if team_column in display.columns:
+        display["team_display"] = display[team_column].map(team_label)
+    return display
+
+
 def require_file(path, upstream_hint):
     if not Path(path).exists():
         st.error(f"Missing required file: {path}")
@@ -314,7 +408,9 @@ def filter_by_group_and_team(data, group_column="group"):
             for team in filtered[column].dropna().astype(str).tolist()
         }
     )
-    selected_team = st.selectbox("Team", ["All", *teams])
+    option_map = team_options(teams)
+    selected_team_label = st.selectbox("Team", ["All", *option_map.keys()])
+    selected_team = option_map.get(selected_team_label, selected_team_label)
     if selected_team != "All":
         if {"home_team", "away_team"}.issubset(filtered.columns):
             filtered = filtered[
@@ -328,11 +424,17 @@ def filter_by_group_and_team(data, group_column="group"):
 
 
 def show_probability_bar_chart(data, label_column, probability_column, title, top_n=10):
+    chart_source = data.copy()
+    display_label_column = label_column
+    if label_column == "team":
+        chart_source = add_chart_team_labels(chart_source, team_column=label_column)
+        display_label_column = "team_display"
+
     chart_data = (
-        data[[label_column, probability_column]]
+        chart_source[[display_label_column, probability_column]]
         .sort_values(probability_column, ascending=False)
         .head(top_n)
-        .set_index(label_column)
+        .set_index(display_label_column)
     )
     st.subheader(title)
     st.bar_chart(chart_data)
@@ -382,7 +484,9 @@ def render_group_predictions(group_predictions):
         selected_group = st.selectbox("Group", ["All", *groups], key="fixture_group")
     with filter_columns[1]:
         teams = sorted(set(predictions["home_team"]).union(set(predictions["away_team"])))
-        selected_team = st.selectbox("Team", ["All", *teams], key="fixture_team")
+        option_map = team_options(teams)
+        selected_team_label = st.selectbox("Team", ["All", *option_map.keys()], key="fixture_team")
+        selected_team = option_map.get(selected_team_label, selected_team_label)
     with filter_columns[2]:
         results = sorted(predictions["predicted_result"].dropna().unique())
         selected_result = st.selectbox("Predicted result", ["All", *results])
@@ -398,11 +502,12 @@ def render_group_predictions(group_predictions):
     if selected_result != "All":
         filtered = filtered[filtered["predicted_result"] == selected_result]
 
+    display_source = add_team_display_columns(filtered, ["home_team", "away_team"])
     display_columns = [
         "date",
         "group",
-        "home_team",
-        "away_team",
+        "home_team_display",
+        "away_team_display",
         "predicted_result",
         "highest_probability_outcome",
         "prob_home_win",
@@ -410,8 +515,14 @@ def render_group_predictions(group_predictions):
         "prob_away_win",
     ]
     display = format_probability_columns(
-        filtered[display_columns],
+        display_source[display_columns],
         ["prob_home_win", "prob_draw", "prob_away_win"],
+    )
+    display = display.rename(
+        columns={
+            "home_team_display": "home_team",
+            "away_team_display": "away_team",
+        }
     )
     st.dataframe(display, use_container_width=True, hide_index=True)
 
@@ -428,9 +539,15 @@ def render_group_tables(group_tables):
         for group in groups:
             st.subheader(f"Group {group}")
             table = group_tables[group_tables["group"] == group].sort_values("group_position")
+            table = add_team_display_columns(table, ["team"])
+            table["team"] = table["team_display"]
+            table = table.drop(columns=["team_display"])
             st.dataframe(table, use_container_width=True, hide_index=True)
     else:
         table = group_tables[group_tables["group"] == selected_group].sort_values("group_position")
+        table = add_team_display_columns(table, ["team"])
+        table["team"] = table["team_display"]
+        table = table.drop(columns=["team_display"])
         st.dataframe(table, use_container_width=True, hide_index=True)
 
 
@@ -449,8 +566,10 @@ def render_simulation_results(simulation_summary):
         "final_probability",
         "champion_probability",
     ]
-    display_columns = ["team", "group", *probability_columns]
-    display = format_probability_columns(filtered[display_columns], probability_columns)
+    display_source = add_team_display_columns(filtered, ["team"])
+    display_columns = ["team_display", "group", *probability_columns]
+    display = format_probability_columns(display_source[display_columns], probability_columns)
+    display = display.rename(columns={"team_display": "team"})
     st.dataframe(display, use_container_width=True, hide_index=True)
 
     chart_columns = st.columns(3)
@@ -481,8 +600,9 @@ def render_simulation_results(simulation_summary):
 
     selected_team = st.selectbox(
         "Advancement breakdown",
-        sorted(simulation_summary["team"].dropna().unique()),
+        list(team_options(simulation_summary["team"].dropna().unique()).keys()),
     )
+    selected_team = team_options(simulation_summary["team"].dropna().unique())[selected_team]
     team_row = simulation_summary[simulation_summary["team"] == selected_team].iloc[0]
     breakdown = pd.Series(
         {
@@ -494,7 +614,7 @@ def render_simulation_results(simulation_summary):
             "Champion": team_row["champion_probability"],
         }
     )
-    st.subheader(f"{selected_team} Advancement Probability")
+    st.subheader(f"{team_label(selected_team)} Advancement Probability")
     st.bar_chart(breakdown)
 
 
@@ -518,7 +638,9 @@ def render_knockout_summary(match_summary):
         selected_round = st.selectbox("Round", ["All", *rounds])
     with filter_columns[1]:
         teams = sorted(set(filtered["home_team"]).union(set(filtered["away_team"])))
-        selected_team = st.selectbox("Team", ["All", *teams], key="knockout_team")
+        option_map = team_options(teams)
+        selected_team_label = st.selectbox("Team", ["All", *option_map.keys()], key="knockout_team")
+        selected_team = option_map.get(selected_team_label, selected_team_label)
 
     if selected_round != "All":
         filtered = filtered[filtered["round"] == selected_round]
@@ -530,16 +652,23 @@ def render_knockout_summary(match_summary):
 
     display_columns = [
         "round",
-        "home_team",
-        "away_team",
+        "home_team_display",
+        "away_team_display",
         "simulations",
         "home_advancement_probability",
         "away_advancement_probability",
     ]
     filtered = filtered.sort_values("simulations", ascending=False)
+    filtered = add_team_display_columns(filtered, ["home_team", "away_team"])
     display = format_probability_columns(
         filtered[display_columns],
         ["home_advancement_probability", "away_advancement_probability"],
+    )
+    display = display.rename(
+        columns={
+            "home_team_display": "home_team",
+            "away_team_display": "away_team",
+        }
     )
     st.dataframe(display, use_container_width=True, hide_index=True)
 
