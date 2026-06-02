@@ -198,6 +198,51 @@ def inject_dark_theme():
             margin-bottom: 1rem;
         }
 
+        .wc-insight-strip {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.75rem;
+            margin: 0.7rem 0 1.1rem;
+        }
+
+        .wc-insight {
+            background: var(--wc-panel);
+            border: 1px solid var(--wc-border);
+            border-radius: 8px;
+            padding: 0.8rem 0.9rem;
+        }
+
+        .wc-insight-label {
+            color: var(--wc-muted);
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+
+        .wc-insight-value {
+            color: var(--wc-text);
+            font-size: 1.05rem;
+            font-weight: 750;
+        }
+
+        .wc-caveat-strip {
+            background: var(--wc-panel-soft);
+            border: 1px solid var(--wc-border);
+            border-radius: 8px;
+            color: var(--wc-muted);
+            font-size: 0.86rem;
+            line-height: 1.45;
+            padding: 0.85rem 1rem;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 900px) {
+            .wc-insight-strip {
+                grid-template-columns: 1fr;
+            }
+        }
+
         [data-testid="stMetric"] {
             background: var(--wc-panel);
             border: 1px solid var(--wc-border);
@@ -440,11 +485,89 @@ def show_probability_bar_chart(data, label_column, probability_column, title, to
     st.bar_chart(chart_data)
 
 
+def get_top_team(simulation_summary, probability_column):
+    top_row = simulation_summary.sort_values(probability_column, ascending=False).iloc[0]
+    return top_row["team"], top_row[probability_column]
+
+
+def render_overview_insights(simulation_summary):
+    champion, champion_probability = get_top_team(simulation_summary, "champion_probability")
+    finalist, final_probability = get_top_team(simulation_summary, "final_probability")
+    knockout_team, knockout_probability = get_top_team(
+        simulation_summary, "round_of_16_probability"
+    )
+
+    st.markdown(
+        f"""
+        <div class="wc-insight-strip">
+            <div class="wc-insight">
+                <div class="wc-insight-label">Most Likely Champion</div>
+                <div class="wc-insight-value">{team_label(champion)} · {champion_probability:.1%}</div>
+            </div>
+            <div class="wc-insight">
+                <div class="wc-insight-label">Most Likely Finalist</div>
+                <div class="wc-insight-value">{team_label(finalist)} · {final_probability:.1%}</div>
+            </div>
+            <div class="wc-insight">
+                <div class="wc-insight-label">Highest Round of 16 Rate</div>
+                <div class="wc-insight-value">{team_label(knockout_team)} · {knockout_probability:.1%}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def build_top_contenders_table(simulation_summary, top_n=10):
+    columns = [
+        "team",
+        "group",
+        "round_of_16_probability",
+        "quarter_final_probability",
+        "semi_final_probability",
+        "final_probability",
+        "champion_probability",
+    ]
+    contenders = (
+        simulation_summary[columns]
+        .sort_values("champion_probability", ascending=False)
+        .head(top_n)
+        .copy()
+    )
+    contenders["team"] = contenders["team"].map(team_label)
+    return format_probability_columns(
+        contenders,
+        [
+            "round_of_16_probability",
+            "quarter_final_probability",
+            "semi_final_probability",
+            "final_probability",
+            "champion_probability",
+        ],
+    )
+
+
+def render_overview_caveats():
+    st.markdown(
+        """
+        <div class="wc-caveat-strip">
+            <strong>Read this as a forecast, not certainty.</strong>
+            The simulation uses outcome-level match results, not scorelines. Group tie-breakers use points,
+            wins, Elo, then team name. Knockout rounds may use Elo fallback when exact model probabilities
+            are not available for a simulated matchup.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_overview(simulation_summary, metadata):
     render_page_header(
         "World Cup Match Outcome Predictor",
         "Selected model outputs, tournament simulation probabilities, and dashboard-ready metadata.",
     )
+
+    render_overview_insights(simulation_summary)
 
     metric_columns = st.columns(6)
     for column, (label, value) in zip(metric_columns, MODEL_METRICS.items()):
@@ -462,13 +585,31 @@ def render_overview(simulation_summary, metadata):
     st.text_input("Input fingerprint", value=str(metadata.get("input_fingerprint", "Unknown")), disabled=True)
     st.caption(f"Created at: {metadata.get('created_at', 'Unknown')}")
 
-    show_probability_bar_chart(
-        simulation_summary,
-        "team",
-        "champion_probability",
-        "Top 10 Champion Probabilities",
-        top_n=10,
+    chart_columns = st.columns(2)
+    with chart_columns[0]:
+        show_probability_bar_chart(
+            simulation_summary,
+            "team",
+            "champion_probability",
+            "Top 10 Champion Probabilities",
+            top_n=10,
+        )
+    with chart_columns[1]:
+        show_probability_bar_chart(
+            simulation_summary,
+            "team",
+            "final_probability",
+            "Top 10 Final Probabilities",
+            top_n=10,
+        )
+
+    st.subheader("Top Contenders")
+    st.dataframe(
+        build_top_contenders_table(simulation_summary),
+        use_container_width=True,
+        hide_index=True,
     )
+    render_overview_caveats()
 
 
 def render_group_predictions(group_predictions):
