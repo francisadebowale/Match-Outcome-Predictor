@@ -1,3 +1,4 @@
+import html
 from pathlib import Path
 
 import pandas as pd
@@ -235,6 +236,61 @@ def inject_dark_theme():
             line-height: 1.45;
             padding: 0.85rem 1rem;
             margin-top: 1rem;
+        }
+
+        .wc-group-card {
+            background: var(--wc-panel);
+            border: 1px solid var(--wc-border);
+            border-radius: 8px;
+            padding: 0.85rem;
+            margin-bottom: 0.85rem;
+        }
+
+        .wc-group-card-title {
+            color: var(--wc-text);
+            font-size: 1rem;
+            font-weight: 800;
+            margin-bottom: 0.55rem;
+        }
+
+        .wc-group-table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 0.84rem;
+        }
+
+        .wc-group-table th {
+            color: var(--wc-muted);
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 0.35rem 0.25rem;
+            text-align: right;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--wc-border);
+        }
+
+        .wc-group-table th:first-child,
+        .wc-group-table td:first-child {
+            text-align: left;
+        }
+
+        .wc-group-table td {
+            color: var(--wc-text);
+            padding: 0.42rem 0.25rem;
+            text-align: right;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        }
+
+        .wc-group-table tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .wc-position {
+            color: var(--wc-muted);
+            display: inline-block;
+            font-size: 0.72rem;
+            font-weight: 800;
+            width: 1.2rem;
         }
 
         @media (max-width: 900px) {
@@ -561,6 +617,114 @@ def render_overview_caveats():
     )
 
 
+def format_percent(value):
+    return f"{value:.1%}"
+
+
+def build_group_qualification_matrix(simulation_summary, selected_group="All"):
+    matrix = simulation_summary[
+        [
+            "group",
+            "team",
+            "group_winner_probability",
+            "group_runner_up_probability",
+            "third_place_qualification_probability",
+            "round_of_32_probability",
+        ]
+    ].copy()
+
+    if selected_group != "All":
+        matrix = matrix[matrix["group"] == selected_group]
+
+    matrix["team"] = matrix["team"].map(team_label)
+    matrix = matrix.rename(
+        columns={
+            "group_winner_probability": "winner",
+            "group_runner_up_probability": "runner_up",
+            "third_place_qualification_probability": "third_place",
+            "round_of_32_probability": "knockout",
+        }
+    )
+    matrix = matrix.sort_values(
+        ["group", "knockout", "winner", "team"],
+        ascending=[True, False, False, True],
+    )
+    return format_probability_columns(
+        matrix,
+        ["winner", "runner_up", "third_place", "knockout"],
+    )
+
+
+def render_group_card(group, group_table, simulation_summary):
+    table = group_table.sort_values("group_position").copy()
+    probability_lookup = (
+        simulation_summary[simulation_summary["group"] == group]
+        .set_index("team")["round_of_32_probability"]
+        .to_dict()
+    )
+
+    rows = []
+    for team in table.itertuples(index=False):
+        knockout_probability = probability_lookup.get(team.team, 0)
+        rows.append(
+            "<tr>"
+            f"<td><span class='wc-position'>{int(team.group_position)}</span>{html.escape(team_label(team.team))}</td>"
+            f"<td>{int(team.played)}</td>"
+            f"<td>{int(team.wins)}</td>"
+            f"<td>{int(team.draws)}</td>"
+            f"<td>{int(team.losses)}</td>"
+            f"<td><strong>{int(team.points)}</strong></td>"
+            f"<td>{format_percent(knockout_probability)}</td>"
+            "</tr>"
+        )
+
+    st.markdown(
+        f"""
+        <div class="wc-group-card">
+            <div class="wc-group-card-title">Group {html.escape(str(group))}</div>
+            <table class="wc-group-table">
+                <thead>
+                    <tr>
+                        <th>Team</th>
+                        <th>P</th>
+                        <th>W</th>
+                        <th>D</th>
+                        <th>L</th>
+                        <th>Pts</th>
+                        <th>KO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(rows)}
+                </tbody>
+            </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_group_cards(group_tables, simulation_summary, selected_group):
+    groups = sorted(group_tables["group"].dropna().unique())
+    if selected_group != "All":
+        render_group_card(
+            selected_group,
+            group_tables[group_tables["group"] == selected_group],
+            simulation_summary,
+        )
+        return
+
+    for index in range(0, len(groups), 3):
+        columns = st.columns(3)
+        for column, group in zip(columns, groups[index:index + 3]):
+            with column:
+                render_group_card(
+                    group,
+                    group_tables[group_tables["group"] == group],
+                    simulation_summary,
+                )
+
+
 def render_overview(simulation_summary, metadata):
     render_page_header(
         "World Cup Match Outcome Predictor",
@@ -668,28 +832,20 @@ def render_group_predictions(group_predictions):
     st.dataframe(display, use_container_width=True, hide_index=True)
 
 
-def render_group_tables(group_tables):
+def render_group_tables(group_tables, simulation_summary):
     render_page_header(
         "Predicted Group Tables",
-        "Model-selected group outcomes using deterministic points from predicted results.",
+        "Predicted standings and qualification probabilities for each World Cup group.",
     )
     groups = sorted(group_tables["group"].dropna().unique())
     selected_group = st.selectbox("Group view", ["All", *groups])
 
-    if selected_group == "All":
-        for group in groups:
-            st.subheader(f"Group {group}")
-            table = group_tables[group_tables["group"] == group].sort_values("group_position")
-            table = add_team_display_columns(table, ["team"])
-            table["team"] = table["team_display"]
-            table = table.drop(columns=["team_display"])
-            st.dataframe(table, use_container_width=True, hide_index=True)
-    else:
-        table = group_tables[group_tables["group"] == selected_group].sort_values("group_position")
-        table = add_team_display_columns(table, ["team"])
-        table["team"] = table["team_display"]
-        table = table.drop(columns=["team_display"])
-        st.dataframe(table, use_container_width=True, hide_index=True)
+    render_group_cards(group_tables, simulation_summary, selected_group)
+
+    st.subheader("Group Qualification Matrix")
+    st.caption("Probabilities come from the 10,000 seeded tournament simulations.")
+    matrix = build_group_qualification_matrix(simulation_summary, selected_group)
+    st.dataframe(matrix, use_container_width=True, hide_index=True)
 
 
 def render_simulation_results(simulation_summary):
@@ -863,7 +1019,7 @@ def main():
     elif selected_page == "Group Predictions":
         render_group_predictions(group_predictions)
     elif selected_page == "Group Tables":
-        render_group_tables(group_tables)
+        render_group_tables(group_tables, simulation_summary)
     elif selected_page == "Simulation Results":
         render_simulation_results(simulation_summary)
     elif selected_page == "Knockout Summary":
