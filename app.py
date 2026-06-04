@@ -655,6 +655,65 @@ def build_group_qualification_matrix(simulation_summary, selected_group="All"):
     )
 
 
+def build_fixture_display_table(fixtures):
+    display = add_team_display_columns(fixtures, ["home_team", "away_team"])
+    display["match"] = display["home_team_display"] + " vs " + display["away_team_display"]
+    display["date"] = display["date"].dt.strftime("%Y-%m-%d %H:%M")
+    display = display[
+        [
+            "date",
+            "group",
+            "match",
+            "predicted_result",
+            "highest_probability_outcome",
+            "highest_probability",
+            "prob_home_win",
+            "prob_draw",
+            "prob_away_win",
+        ]
+    ].rename(
+        columns={
+            "highest_probability_outcome": "top_outcome",
+            "highest_probability": "top_probability",
+            "prob_home_win": "home_win",
+            "prob_draw": "draw",
+            "prob_away_win": "away_win",
+        }
+    )
+    for probability_column in ["top_probability", "home_win", "draw", "away_win"]:
+        display[probability_column] = display[probability_column] * 100
+    return display
+
+
+def fixture_probability_column_config():
+    return {
+        "top_probability": st.column_config.ProgressColumn(
+            "top_probability",
+            format="%.1f%%",
+            min_value=0,
+            max_value=100,
+        ),
+        "home_win": st.column_config.ProgressColumn(
+            "home_win",
+            format="%.1f%%",
+            min_value=0,
+            max_value=100,
+        ),
+        "draw": st.column_config.ProgressColumn(
+            "draw",
+            format="%.1f%%",
+            min_value=0,
+            max_value=100,
+        ),
+        "away_win": st.column_config.ProgressColumn(
+            "away_win",
+            format="%.1f%%",
+            min_value=0,
+            max_value=100,
+        ),
+    }
+
+
 def render_group_card(group, group_table, simulation_summary):
     table = group_table.sort_values("group_position").copy()
     probability_lookup = (
@@ -783,7 +842,7 @@ def render_group_predictions(group_predictions):
     )
     predictions = add_outcome_summary(group_predictions)
 
-    filter_columns = st.columns(3)
+    filter_columns = st.columns([1, 1, 1, 1.4])
     with filter_columns[0]:
         groups = sorted(predictions["group"].dropna().unique())
         selected_group = st.selectbox("Group", ["All", *groups], key="fixture_group")
@@ -795,6 +854,11 @@ def render_group_predictions(group_predictions):
     with filter_columns[2]:
         results = sorted(predictions["predicted_result"].dropna().unique())
         selected_result = st.selectbox("Predicted result", ["All", *results])
+    with filter_columns[3]:
+        search_query = st.text_input(
+            "Search fixtures",
+            placeholder="Search team, group, or result",
+        ).strip().lower()
 
     filtered = predictions.copy()
     if selected_group != "All":
@@ -807,29 +871,30 @@ def render_group_predictions(group_predictions):
     if selected_result != "All":
         filtered = filtered[filtered["predicted_result"] == selected_result]
 
-    display_source = add_team_display_columns(filtered, ["home_team", "away_team"])
-    display_columns = [
-        "date",
-        "group",
-        "home_team_display",
-        "away_team_display",
-        "predicted_result",
-        "highest_probability_outcome",
-        "prob_home_win",
-        "prob_draw",
-        "prob_away_win",
-    ]
-    display = format_probability_columns(
-        display_source[display_columns],
-        ["prob_home_win", "prob_draw", "prob_away_win"],
+    if search_query:
+        searchable = (
+            filtered["home_team"].str.lower()
+            + " "
+            + filtered["away_team"].str.lower()
+            + " group "
+            + filtered["group"].astype(str).str.lower()
+            + " "
+            + filtered["predicted_result"].astype(str).str.lower()
+            + " "
+            + filtered["highest_probability_outcome"].astype(str).str.lower()
+        )
+        filtered = filtered[searchable.str.contains(search_query, na=False)]
+
+    filtered = filtered.sort_values(["date", "group", "home_team"]).reset_index(drop=True)
+    st.caption(f"{len(filtered)} fixtures shown")
+
+    display = build_fixture_display_table(filtered)
+    st.dataframe(
+        display,
+        use_container_width=True,
+        hide_index=True,
+        column_config=fixture_probability_column_config(),
     )
-    display = display.rename(
-        columns={
-            "home_team_display": "home_team",
-            "away_team_display": "away_team",
-        }
-    )
-    st.dataframe(display, use_container_width=True, hide_index=True)
 
 
 def render_group_tables(group_tables, simulation_summary):
