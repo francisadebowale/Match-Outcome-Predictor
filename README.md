@@ -37,9 +37,6 @@ Elo ratings from [eloratings.net](https://www.eloratings.net/)
 World Cup results from 2014, 2018, and 2022
 2026 World Cup qualifier results from https://www.football-data.co.uk/data.php
 
-Match stats such as xG, shots, possession, goals scored, and goals conceded
-Betting odds, including maximum and average market odds from https://www.football-data.co.uk/data.php
-
 - Features
 
 Some of the features I want to try are:
