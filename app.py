@@ -97,6 +97,7 @@ NAV_ITEMS = [
     "Overview",
     "Group Predictions",
     "Group Tables",
+    "Team Page",
     "Simulation Results",
     "Knockout Summary",
     "Methodology",
@@ -714,6 +715,117 @@ def fixture_probability_column_config():
     }
 
 
+def get_team_selection(teams, label="Team", key=None):
+    option_map = team_options(teams)
+    selected_label = st.selectbox(label, list(option_map.keys()), key=key)
+    return option_map[selected_label]
+
+
+def get_team_summary_row(simulation_summary, team):
+    team_rows = simulation_summary[simulation_summary["team"] == team]
+    if team_rows.empty:
+        return None
+    return team_rows.iloc[0]
+
+
+def build_team_advancement_series(team_row):
+    return pd.Series(
+        {
+            "Group winner": team_row["group_winner_probability"],
+            "Runner-up": team_row["group_runner_up_probability"],
+            "Third-place qualify": team_row["third_place_qualification_probability"],
+            "Round of 32": team_row["round_of_32_probability"],
+            "Round of 16": team_row["round_of_16_probability"],
+            "Quarter Final": team_row["quarter_final_probability"],
+            "Semi Final": team_row["semi_final_probability"],
+            "Final": team_row["final_probability"],
+            "Champion": team_row["champion_probability"],
+        }
+    )
+
+
+def build_team_group_table(group_tables, selected_team):
+    team_group_rows = group_tables[group_tables["team"] == selected_team]
+    if team_group_rows.empty:
+        return pd.DataFrame()
+
+    selected_group = team_group_rows.iloc[0]["group"]
+    group_table = group_tables[group_tables["group"] == selected_group].copy()
+    group_table = add_team_display_columns(group_table, ["team"])
+    group_table["selected"] = group_table["team"].map(
+        lambda team: "Selected" if team == selected_team else ""
+    )
+    display_columns = [
+        "group_position",
+        "team_display",
+        "played",
+        "wins",
+        "draws",
+        "losses",
+        "points",
+        "selected",
+    ]
+    available_columns = [column for column in display_columns if column in group_table.columns]
+    return (
+        group_table[available_columns]
+        .sort_values("group_position")
+        .rename(columns={"team_display": "team"})
+    )
+
+
+def build_team_fixtures(group_predictions, selected_team):
+    predictions = add_outcome_summary(group_predictions)
+    fixtures = predictions[
+        (predictions["home_team"] == selected_team)
+        | (predictions["away_team"] == selected_team)
+    ].copy()
+    return fixtures.sort_values(["date", "group"])
+
+
+def build_team_knockout_matchups(match_summary, selected_team, top_n=12):
+    if match_summary is None:
+        return None
+
+    matchups = match_summary[
+        (match_summary["home_team"] == selected_team)
+        | (match_summary["away_team"] == selected_team)
+    ].copy()
+    if matchups.empty:
+        return matchups
+
+    matchups["opponent"] = matchups.apply(
+        lambda row: row["away_team"] if row["home_team"] == selected_team else row["home_team"],
+        axis=1,
+    )
+    matchups["advancement_probability"] = matchups.apply(
+        lambda row: (
+            row["home_advancement_probability"]
+            if row["home_team"] == selected_team
+            else row["away_advancement_probability"]
+        ),
+        axis=1,
+    )
+    matchups = add_team_display_columns(matchups, ["home_team", "away_team", "opponent"])
+    display = matchups[
+        [
+            "round",
+            "opponent_display",
+            "simulations",
+            "advancement_probability",
+            "home_team_display",
+            "away_team_display",
+        ]
+    ].sort_values("simulations", ascending=False).head(top_n)
+    display = format_probability_columns(display, ["advancement_probability"])
+    return display.rename(
+        columns={
+            "opponent_display": "opponent",
+            "home_team_display": "home_team",
+            "away_team_display": "away_team",
+        }
+    )
+
+
 def render_group_card(group, group_table, simulation_summary):
     table = group_table.sort_values("group_position").copy()
     probability_lookup = (
@@ -913,6 +1025,69 @@ def render_group_tables(group_tables, simulation_summary):
     st.dataframe(matrix, use_container_width=True, hide_index=True)
 
 
+def render_team_page(group_predictions, group_tables, simulation_summary, match_summary):
+    render_page_header(
+        "Team Page",
+        "Team-level fixtures, group position, advancement probabilities, and likely knockout matchups.",
+    )
+
+    selected_team = get_team_selection(
+        simulation_summary["team"].dropna().unique(),
+        label="Select team",
+        key="team_page_selector",
+    )
+    team_row = get_team_summary_row(simulation_summary, selected_team)
+    if team_row is None:
+        st.error(f"No simulation summary found for {selected_team}.")
+        return
+
+    st.subheader(team_label(selected_team))
+    metric_columns = st.columns(6)
+    metric_columns[0].metric("Group", team_row.get("group", "Unknown"))
+    metric_columns[1].metric("Round of 32", format_percent(team_row["round_of_32_probability"]))
+    metric_columns[2].metric("Round of 16", format_percent(team_row["round_of_16_probability"]))
+    metric_columns[3].metric("Quarter Final", format_percent(team_row["quarter_final_probability"]))
+    metric_columns[4].metric("Final", format_percent(team_row["final_probability"]))
+    metric_columns[5].metric("Champion", format_percent(team_row["champion_probability"]))
+
+    chart_columns = st.columns([1.15, 1])
+    with chart_columns[0]:
+        st.subheader("Advancement Profile")
+        st.bar_chart(build_team_advancement_series(team_row))
+    with chart_columns[1]:
+        st.subheader("Predicted Group Table")
+        group_table = build_team_group_table(group_tables, selected_team)
+        if group_table.empty:
+            st.info("No group table row found for this team.")
+        else:
+            st.dataframe(group_table, use_container_width=True, hide_index=True)
+
+    st.subheader("Group Fixtures")
+    fixtures = build_team_fixtures(group_predictions, selected_team)
+    if fixtures.empty:
+        st.info("No group-stage fixtures found for this team.")
+    else:
+        st.dataframe(
+            build_fixture_display_table(fixtures),
+            use_container_width=True,
+            hide_index=True,
+            column_config=fixture_probability_column_config(),
+        )
+
+    st.subheader("Likely Knockout Matchups")
+    matchup_display = build_team_knockout_matchups(match_summary, selected_team)
+    if matchup_display is None:
+        st.warning(
+            f"Optional file missing: {MATCH_SIMULATION_SUMMARY_PATH}. "
+            "Run `python3 src/simulate_world_cup_2026.py` to create it."
+        )
+    elif matchup_display.empty:
+        st.info("No simulated knockout matchups found for this team.")
+    else:
+        st.caption("Sorted by how often the matchup appeared across simulations.")
+        st.dataframe(matchup_display, use_container_width=True, hide_index=True)
+
+
 def render_simulation_results(simulation_summary):
     render_page_header(
         "Simulation Results",
@@ -1085,6 +1260,8 @@ def main():
         render_group_predictions(group_predictions)
     elif selected_page == "Group Tables":
         render_group_tables(group_tables, simulation_summary)
+    elif selected_page == "Team Page":
+        render_team_page(group_predictions, group_tables, simulation_summary, match_summary)
     elif selected_page == "Simulation Results":
         render_simulation_results(simulation_summary)
     elif selected_page == "Knockout Summary":
