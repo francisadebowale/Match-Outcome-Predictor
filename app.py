@@ -98,6 +98,7 @@ NAV_ITEMS = [
     "Group Predictions",
     "Group Tables",
     "Team Page",
+    "Match Page",
     "Simulation Results",
     "Knockout Summary",
     "Methodology",
@@ -826,6 +827,234 @@ def build_team_knockout_matchups(match_summary, selected_team, top_n=12):
     )
 
 
+def format_match_datetime(value):
+    if pd.isna(value):
+        return "Date unavailable"
+    return pd.to_datetime(value).strftime("%Y-%m-%d %H:%M")
+
+
+def get_match_winner_label(predicted_result, home_team, away_team):
+    if predicted_result == "home_win":
+        return f"{team_label(home_team)} win"
+    if predicted_result == "away_win":
+        return f"{team_label(away_team)} win"
+    return "Draw"
+
+
+def build_group_match_options(matches):
+    options = {}
+    for row in matches.itertuples():
+        label = (
+            f"{format_match_datetime(row.date)} · Group {row.group} · "
+            f"{team_label(row.home_team)} vs {team_label(row.away_team)}"
+        )
+        options[label] = row.Index
+    return options
+
+
+def build_knockout_match_options(matches):
+    options = {}
+    for row in matches.itertuples():
+        label = (
+            f"{row.round} · {team_label(row.home_team)} vs {team_label(row.away_team)} · "
+            f"{int(row.simulations)} sims"
+        )
+        options[label] = row.Index
+    return options
+
+
+def filter_group_matches(group_predictions):
+    matches = add_outcome_summary(group_predictions)
+    filter_columns = st.columns([1, 1, 1.4])
+    with filter_columns[0]:
+        groups = sorted(matches["group"].dropna().unique())
+        selected_group = st.selectbox("Group", ["All", *groups], key="match_page_group")
+    with filter_columns[1]:
+        teams = sorted(set(matches["home_team"]).union(set(matches["away_team"])))
+        option_map = team_options(teams)
+        selected_team_label = st.selectbox("Team", ["All", *option_map.keys()], key="match_page_team")
+        selected_team = option_map.get(selected_team_label, selected_team_label)
+    with filter_columns[2]:
+        search_query = st.text_input(
+            "Search match",
+            placeholder="Search team, venue, or result",
+            key="match_page_search",
+        ).strip().lower()
+
+    if selected_group != "All":
+        matches = matches[matches["group"] == selected_group]
+    if selected_team != "All":
+        matches = matches[
+            (matches["home_team"] == selected_team)
+            | (matches["away_team"] == selected_team)
+        ]
+    if search_query:
+        searchable = (
+            matches["home_team"].str.lower()
+            + " "
+            + matches["away_team"].str.lower()
+            + " "
+            + matches["location"].astype(str).str.lower()
+            + " "
+            + matches["predicted_result"].astype(str).str.lower()
+            + " "
+            + matches["home_team_result"].astype(str).str.lower()
+        )
+        matches = matches[searchable.str.contains(search_query, na=False)]
+
+    return matches.sort_values(["date", "group", "home_team"])
+
+
+def render_group_match_detail(group_predictions):
+    matches = filter_group_matches(group_predictions)
+    if matches.empty:
+        st.info("No group-stage fixture matches the current filters.")
+        return
+
+    options = build_group_match_options(matches)
+    selected_label = st.selectbox("Select fixture", list(options.keys()), key="group_match_select")
+    match = matches.loc[options[selected_label]]
+
+    st.subheader(f"{team_label(match['home_team'])} vs {team_label(match['away_team'])}")
+    detail_columns = st.columns(5)
+    detail_columns[0].metric("Group", match.get("group", "Unknown"))
+    detail_columns[1].metric("Date", format_match_datetime(match.get("date", pd.NaT)))
+    detail_columns[2].metric("Venue", match.get("location", "Unknown"))
+    detail_columns[3].metric(
+        "Prediction",
+        get_match_winner_label(match["predicted_result"], match["home_team"], match["away_team"]),
+    )
+    detail_columns[4].metric("Elo diff", int(match.get("elo_difference", 0)))
+
+    probability_chart = pd.Series(
+        {
+            f"{team_label(match['home_team'])} win": match["prob_home_win"],
+            "Draw": match["prob_draw"],
+            f"{team_label(match['away_team'])} win": match["prob_away_win"],
+        }
+    )
+    st.subheader("Outcome Probabilities")
+    st.bar_chart(probability_chart)
+
+    fixture_display = build_fixture_display_table(pd.DataFrame([match]))
+    st.dataframe(
+        fixture_display,
+        use_container_width=True,
+        hide_index=True,
+        column_config=fixture_probability_column_config(),
+    )
+
+
+def filter_knockout_matches(match_summary):
+    matches = match_summary.copy()
+    filter_columns = st.columns([1, 1, 1.4])
+    with filter_columns[0]:
+        rounds = sorted(matches["round"].dropna().unique())
+        selected_round = st.selectbox("Round", ["All", *rounds], key="match_page_round")
+    with filter_columns[1]:
+        teams = sorted(set(matches["home_team"]).union(set(matches["away_team"])))
+        option_map = team_options(teams)
+        selected_team_label = st.selectbox(
+            "Team",
+            ["All", *option_map.keys()],
+            key="match_page_knockout_team",
+        )
+        selected_team = option_map.get(selected_team_label, selected_team_label)
+    with filter_columns[2]:
+        search_query = st.text_input(
+            "Search matchup",
+            placeholder="Search team or round",
+            key="match_page_knockout_search",
+        ).strip().lower()
+
+    if selected_round != "All":
+        matches = matches[matches["round"] == selected_round]
+    if selected_team != "All":
+        matches = matches[
+            (matches["home_team"] == selected_team)
+            | (matches["away_team"] == selected_team)
+        ]
+    if search_query:
+        searchable = (
+            matches["home_team"].str.lower()
+            + " "
+            + matches["away_team"].str.lower()
+            + " "
+            + matches["round"].astype(str).str.lower()
+        )
+        matches = matches[searchable.str.contains(search_query, na=False)]
+
+    return matches.sort_values("simulations", ascending=False)
+
+
+def render_knockout_match_detail(match_summary):
+    if match_summary is None:
+        st.warning(
+            f"Optional file missing: {MATCH_SIMULATION_SUMMARY_PATH}. "
+            "Run `python3 src/simulate_world_cup_2026.py` to create it."
+        )
+        return
+
+    matches = filter_knockout_matches(match_summary)
+    if matches.empty:
+        st.info("No simulated knockout matchup matches the current filters.")
+        return
+
+    options = build_knockout_match_options(matches)
+    selected_label = st.selectbox("Select matchup", list(options.keys()), key="knockout_match_select")
+    match = matches.loc[options[selected_label]]
+
+    st.subheader(f"{team_label(match['home_team'])} vs {team_label(match['away_team'])}")
+    detail_columns = st.columns(5)
+    detail_columns[0].metric("Round", match["round"])
+    detail_columns[1].metric("Simulations", int(match["simulations"]))
+    detail_columns[2].metric(
+        f"{match['home_team']} advance",
+        format_percent(match["home_advancement_probability"]),
+    )
+    detail_columns[3].metric(
+        f"{match['away_team']} advance",
+        format_percent(match["away_advancement_probability"]),
+    )
+    detail_columns[4].metric("Draw handling", "Redistributed")
+
+    advancement_chart = pd.Series(
+        {
+            f"{team_label(match['home_team'])} advance": match["home_advancement_probability"],
+            f"{team_label(match['away_team'])} advance": match["away_advancement_probability"],
+        }
+    )
+    st.subheader("Advancement Probabilities")
+    st.bar_chart(advancement_chart)
+
+    probability_columns = [
+        "home_probability",
+        "draw_probability",
+        "away_probability",
+        "home_advancement_probability",
+        "away_advancement_probability",
+    ]
+    display = add_team_display_columns(pd.DataFrame([match]), ["home_team", "away_team"])
+    display = format_probability_columns(
+        display[
+            [
+                "round",
+                "home_team_display",
+                "away_team_display",
+                "simulations",
+                *probability_columns,
+            ]
+        ],
+        probability_columns,
+    ).rename(
+        columns={
+            "home_team_display": "home_team",
+            "away_team_display": "away_team",
+        }
+    )
+    st.dataframe(display, use_container_width=True, hide_index=True)
+
+
 def render_group_card(group, group_table, simulation_summary):
     table = group_table.sort_values("group_position").copy()
     probability_lookup = (
@@ -1088,6 +1317,20 @@ def render_team_page(group_predictions, group_tables, simulation_summary, match_
         st.dataframe(matchup_display, use_container_width=True, hide_index=True)
 
 
+def render_match_page(group_predictions, match_summary):
+    render_page_header(
+        "Match Page",
+        "Inspect confirmed group fixtures and common simulated knockout matchups one match at a time.",
+    )
+
+    group_tab, knockout_tab = st.tabs(["Group-stage fixtures", "Simulated knockout matchups"])
+    with group_tab:
+        render_group_match_detail(group_predictions)
+    with knockout_tab:
+        st.caption("Knockout teams are simulation-derived, not confirmed fixtures.")
+        render_knockout_match_detail(match_summary)
+
+
 def render_simulation_results(simulation_summary):
     render_page_header(
         "Simulation Results",
@@ -1262,6 +1505,8 @@ def main():
         render_group_tables(group_tables, simulation_summary)
     elif selected_page == "Team Page":
         render_team_page(group_predictions, group_tables, simulation_summary, match_summary)
+    elif selected_page == "Match Page":
+        render_match_page(group_predictions, match_summary)
     elif selected_page == "Simulation Results":
         render_simulation_results(simulation_summary)
     elif selected_page == "Knockout Summary":
