@@ -1,8 +1,17 @@
 import html
+import textwrap
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+
+from src.simulate_world_cup_2026 import (
+    build_match_probability_lookup,
+    build_round_of_32_matches,
+    build_team_elo_lookup,
+    convert_to_advancement_probabilities,
+    get_match_probabilities,
+)
 
 
 GROUP_PREDICTIONS_PATH = Path("results/predictions/world_cup_2026_group_predictions_v1.csv")
@@ -11,6 +20,7 @@ SIMULATION_SUMMARY_PATH = Path("results/simulations/world_cup_2026_simulation_su
 MATCH_SIMULATION_SUMMARY_PATH = Path("results/simulations/world_cup_2026_match_simulation_summary.csv")
 METADATA_PATH = Path("results/simulations/world_cup_2026_metadata.json")
 ANNEX_C_PATH = Path("data/raw/world_cup_2026/annex_c_third_place_allocation.csv")
+FIXTURES_PATH = Path("data/raw/world_cup_2026/fixtures.csv")
 
 MODEL_METRICS = {
     "Model": "Multiclass Logistic Regression",
@@ -99,10 +109,27 @@ NAV_ITEMS = [
     "Group Tables",
     "Team Page",
     "Match Page",
+    "Bracket Page",
     "Simulation Results",
     "Knockout Summary",
     "Methodology",
 ]
+
+KNOCKOUT_ROUNDS = [
+    "Round of 32",
+    "Round of 16",
+    "Quarter Finals",
+    "Semi Finals",
+    "Finals",
+]
+
+BRACKET_MATCH_COUNTS = {
+    "Round of 32": 16,
+    "Round of 16": 8,
+    "Quarter Finals": 4,
+    "Semi Finals": 2,
+    "Finals": 1,
+}
 
 
 def inject_dark_theme():
@@ -287,6 +314,254 @@ def inject_dark_theme():
             border-bottom: 0;
         }
 
+        .wc-bracket-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.65rem;
+            margin: 0.55rem 0 0.9rem;
+        }
+
+        .wc-bracket-summary-item {
+            background: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.88));
+            border: 1px solid var(--wc-border);
+            border-radius: 8px;
+            padding: 0.7rem 0.75rem;
+        }
+
+        .wc-bracket-summary-label {
+            color: var(--wc-muted);
+            font-size: 0.66rem;
+            font-weight: 850;
+            letter-spacing: 0.04em;
+            margin-bottom: 0.25rem;
+            text-transform: uppercase;
+        }
+
+        .wc-bracket-summary-value {
+            color: var(--wc-text);
+            font-size: 0.9rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .wc-bracket-summary-sub {
+            color: var(--wc-muted);
+            font-size: 0.72rem;
+            font-weight: 700;
+            margin-top: 0.2rem;
+        }
+
+        .wc-bracket-viewport {
+            background: linear-gradient(180deg, rgba(8, 13, 24, 0.86), rgba(11, 17, 32, 0.7));
+            border: 1px solid var(--wc-border);
+            border-radius: 8px;
+            margin-top: 0.75rem;
+            overflow-x: auto;
+            overflow-y: visible;
+            padding: 0.35rem;
+        }
+
+        .wc-bracket-board {
+            display: grid;
+            grid-template-columns: repeat(9, 164px);
+            gap: 8px;
+            min-width: 1510px;
+            padding: 0.7rem;
+        }
+
+        .wc-bracket-column {
+            background: rgba(15, 23, 42, 0.34);
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            border-radius: 8px;
+            min-width: 0;
+            padding: 0.45rem;
+        }
+
+        .wc-bracket-round-title {
+            color: #cbd5e1;
+            font-size: 0.7rem;
+            font-weight: 800;
+            letter-spacing: 0.055em;
+            text-transform: uppercase;
+            margin: 0 0 0.38rem;
+        }
+
+        .wc-bracket-card {
+            background: rgba(17, 24, 39, 0.98);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 8px;
+            box-sizing: border-box;
+            height: 4.65rem;
+            margin-bottom: 0.34rem;
+            overflow: hidden;
+            padding: 0.42rem 0.5rem;
+            position: relative;
+            transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+        }
+
+        .wc-bracket-card:hover {
+            background: rgba(22, 32, 51, 0.98);
+            border-color: rgba(56, 189, 248, 0.45);
+            transform: translateY(-1px);
+        }
+
+        .wc-bracket-card::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            width: 0.48rem;
+            border-top: 1px solid rgba(148, 163, 184, 0.28);
+        }
+
+        .wc-bracket-left .wc-bracket-card::after,
+        .wc-bracket-left-middle .wc-bracket-card::after {
+            right: -0.48rem;
+        }
+
+        .wc-bracket-right .wc-bracket-card::after,
+        .wc-bracket-right-middle .wc-bracket-card::after {
+            left: -0.48rem;
+        }
+
+        .wc-bracket-center .wc-bracket-card::after {
+            display: none;
+        }
+
+        .wc-bracket-depth-0 .wc-bracket-card {
+            margin-bottom: 0.32rem;
+        }
+
+        .wc-bracket-depth-1 .wc-bracket-card:first-of-type {
+            margin-top: 1.8rem;
+        }
+
+        .wc-bracket-depth-1 .wc-bracket-card {
+            margin-bottom: 2.25rem;
+        }
+
+        .wc-bracket-depth-2 .wc-bracket-card:first-of-type {
+            margin-top: 4.85rem;
+        }
+
+        .wc-bracket-depth-2 .wc-bracket-card {
+            margin-bottom: 5.65rem;
+        }
+
+        .wc-bracket-depth-3 .wc-bracket-card:first-of-type {
+            margin-top: 10.2rem;
+        }
+
+        .wc-bracket-depth-3 .wc-bracket-card {
+            margin-bottom: 0.32rem;
+        }
+
+        .wc-bracket-center .wc-bracket-card:first-of-type {
+            margin-top: 8.25rem;
+        }
+
+        .wc-bracket-center .wc-bracket-card {
+            border-color: rgba(56, 189, 248, 0.32);
+            margin-bottom: 0.5rem;
+        }
+
+        .wc-bracket-third-place {
+            border-color: rgba(148, 163, 184, 0.22);
+            margin-top: 0.65rem;
+            opacity: 0.9;
+        }
+
+        .wc-bracket-card-meta {
+            color: var(--wc-muted);
+            font-size: 0.62rem;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 0.25rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .wc-bracket-team {
+            color: var(--wc-text);
+            font-size: 0.8rem;
+            font-weight: 700;
+            line-height: 1.18;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .wc-bracket-team-advancing {
+            color: #67e8f9;
+            font-weight: 900;
+        }
+
+        .wc-bracket-team-secondary {
+            color: var(--wc-muted);
+            font-weight: 650;
+        }
+
+        .wc-bracket-flag {
+            display: inline-block;
+            font-size: 1rem;
+            line-height: 1;
+            margin-right: 0.28rem;
+            vertical-align: -0.06rem;
+        }
+
+        .wc-bracket-prob {
+            color: var(--wc-accent);
+            font-size: 0.66rem;
+            font-weight: 800;
+            margin-top: 0.24rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .wc-bracket-advancing-label {
+            color: var(--wc-muted);
+            font-size: 0.58rem;
+            font-weight: 850;
+            letter-spacing: 0.04em;
+            margin-top: 0.18rem;
+            text-transform: uppercase;
+        }
+
+        .wc-bracket-prob-row {
+            align-items: center;
+            display: grid;
+            gap: 0.3rem;
+            grid-template-columns: minmax(0, 1fr) 2.6rem;
+            margin-top: 0.14rem;
+        }
+
+        .wc-bracket-bar {
+            background: rgba(148, 163, 184, 0.16);
+            border-radius: 999px;
+            height: 0.25rem;
+            overflow: hidden;
+        }
+
+        .wc-bracket-bar-fill {
+            background: rgba(56, 189, 248, 0.74);
+            border-radius: inherit;
+            height: 100%;
+        }
+
+        .wc-bracket-prob-value {
+            color: var(--wc-muted);
+            font-size: 0.62rem;
+            font-weight: 800;
+            text-align: right;
+        }
+
+        .wc-bracket-mobile-note {
+            color: var(--wc-muted);
+            font-size: 0.78rem;
+            margin: 0.35rem 0 0.7rem;
+        }
+
         .wc-position {
             color: var(--wc-muted);
             display: inline-block;
@@ -298,6 +573,19 @@ def inject_dark_theme():
         @media (max-width: 900px) {
             .wc-insight-strip {
                 grid-template-columns: 1fr;
+            }
+
+            .wc-bracket-summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .wc-bracket-board {
+                grid-template-columns: repeat(9, 156px);
+                min-width: 1440px;
+            }
+
+            .wc-bracket-card {
+                height: 4.6rem;
             }
         }
 
@@ -397,6 +685,19 @@ def team_label(team):
     return f"{flag} {team}"
 
 
+def team_bracket_html(team):
+    flag = country_code_to_flag(TEAM_FLAGS.get(str(team), ""))
+    escaped_team = html.escape(str(team))
+    if not flag:
+        return escaped_team
+    return f'<span class="wc-bracket-flag">{html.escape(flag)}</span>{escaped_team}'
+
+
+def bracket_team_row_html(team, is_advancing=False):
+    class_name = "wc-bracket-team wc-bracket-team-advancing" if is_advancing else "wc-bracket-team wc-bracket-team-secondary"
+    return f'<div class="{class_name}">{team_bracket_html(team)}</div>'
+
+
 def team_options(teams):
     return {team_label(team): team for team in sorted(set(teams))}
 
@@ -473,6 +774,26 @@ def load_annex_c_rows():
     if not ANNEX_C_PATH.exists():
         return None
     return len(pd.read_csv(ANNEX_C_PATH))
+
+
+@st.cache_data
+def load_annex_allocations():
+    if not ANNEX_C_PATH.exists():
+        return None
+    return pd.read_csv(ANNEX_C_PATH)
+
+
+@st.cache_data
+def load_fixture_skeleton():
+    if not FIXTURES_PATH.exists():
+        return None
+    fixtures = pd.read_csv(FIXTURES_PATH)
+    fixtures["Date"] = pd.to_datetime(
+        fixtures["Date"],
+        format="%d/%m/%Y %H:%M",
+        errors="coerce",
+    )
+    return fixtures
 
 
 def format_probability_columns(data, columns):
@@ -861,6 +1182,602 @@ def build_knockout_match_options(matches):
         )
         options[label] = row.Index
     return options
+
+
+def get_knockout_fixtures(fixtures):
+    if fixtures is None:
+        return None
+    return fixtures[fixtures["Round Number"].isin(KNOCKOUT_ROUNDS)].copy()
+
+
+def get_placeholder_label(value):
+    if pd.isna(value):
+        return "To be announced"
+    return str(value)
+
+
+def render_official_bracket_card(row):
+    date_value = row.get("Date", pd.NaT)
+    if pd.isna(date_value):
+        date_label = "Date unavailable"
+    else:
+        date_label = pd.to_datetime(date_value, dayfirst=True).strftime("%b %d · %H:%M")
+
+    st.markdown(
+        f"""
+        <div class="wc-bracket-card">
+            <div class="wc-bracket-card-meta">M{int(row['Match Number'])} · {html.escape(date_label)}</div>
+            <div class="wc-bracket-team">{html.escape(get_placeholder_label(row['Home Team']))}</div>
+            <div class="wc-bracket-team">{html.escape(get_placeholder_label(row['Away Team']))}</div>
+            <div class="wc-bracket-card-meta">{html.escape(get_placeholder_label(row['Location']))}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_simulated_bracket_card(row):
+    home_probability = row["home_advancement_probability"]
+    away_probability = row["away_advancement_probability"]
+    favored_team = row["home_team"] if home_probability >= away_probability else row["away_team"]
+    favored_probability = max(home_probability, away_probability)
+
+    st.markdown(
+        f"""
+        <div class="wc-bracket-card">
+            <div class="wc-bracket-card-meta">{int(row['simulations'])} simulations</div>
+            <div class="wc-bracket-team">{html.escape(team_label(row['home_team']))}</div>
+            <div class="wc-bracket-team">{html.escape(team_label(row['away_team']))}</div>
+            <div class="wc-bracket-prob">{html.escape(team_label(favored_team))} · {format_percent(favored_probability)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def get_bracket_card_count(row):
+    if "simulations" in row and pd.notna(row["simulations"]):
+        return f"{int(row['simulations'])} simulations"
+    return "Most likely path"
+
+
+def official_bracket_card_html(row):
+    date_value = row.get("Date", pd.NaT)
+    if pd.isna(date_value):
+        date_label = "Date unavailable"
+    else:
+        date_label = pd.to_datetime(date_value).strftime("%b %d · %H:%M")
+
+    tooltip = (
+        f"Match {int(row['Match Number'])} | {get_placeholder_label(row['Home Team'])} vs "
+        f"{get_placeholder_label(row['Away Team'])} | {get_placeholder_label(row['Location'])}"
+    )
+    extra_class = " wc-bracket-third-place" if row.get("is_third_place") else ""
+    card_label = "Third-Place Match" if row.get("is_third_place") else f"M{int(row['Match Number'])} · {html.escape(date_label)}"
+    return textwrap.dedent(f"""
+        <div class="wc-bracket-card{extra_class}" title="{html.escape(tooltip)}">
+            <div class="wc-bracket-card-meta">{card_label}</div>
+            <div class="wc-bracket-team">{html.escape(get_placeholder_label(row['Home Team']))}</div>
+            <div class="wc-bracket-team">{html.escape(get_placeholder_label(row['Away Team']))}</div>
+            <div class="wc-bracket-card-meta">{html.escape(get_placeholder_label(row['Location']))}</div>
+        </div>
+    """).strip()
+
+
+def probability_bar_html(probability):
+    bounded_probability = max(0, min(1, probability))
+    return textwrap.dedent(f"""
+        <div class="wc-bracket-prob-row">
+            <div class="wc-bracket-bar">
+                <div class="wc-bracket-bar-fill" style="width: {bounded_probability * 100:.1f}%"></div>
+            </div>
+            <div class="wc-bracket-prob-value">{bounded_probability:.0%}</div>
+        </div>
+    """).strip()
+
+
+def simulated_bracket_card_html(row):
+    home_probability = row["home_advancement_probability"]
+    away_probability = row["away_advancement_probability"]
+    favored_team = row.get("winner")
+    if not favored_team:
+        favored_team = row["home_team"] if home_probability >= away_probability else row["away_team"]
+    favored_probability = max(home_probability, away_probability)
+    card_count = get_bracket_card_count(row)
+    extra_class = " wc-bracket-third-place" if row.get("is_third_place") else ""
+    meta_label = "Third-Place Match" if row.get("is_third_place") else card_count
+
+    tooltip = (
+        f"{row['home_team']} vs {row['away_team']} | {card_count} | "
+        f"{row['home_team']}: {format_percent(home_probability)} | "
+        f"{row['away_team']}: {format_percent(away_probability)}"
+    )
+    return textwrap.dedent(f"""
+        <div class="wc-bracket-card{extra_class}" title="{html.escape(tooltip)}">
+            <div class="wc-bracket-card-meta">{html.escape(meta_label)}</div>
+            {bracket_team_row_html(row['home_team'], row['home_team'] == favored_team)}
+            {probability_bar_html(home_probability)}
+            {bracket_team_row_html(row['away_team'], row['away_team'] == favored_team)}
+            {probability_bar_html(away_probability)}
+            <div class="wc-bracket-advancing-label">Advancing</div>
+            <div class="wc-bracket-prob">{html.escape(team_label(favored_team))} {format_percent(favored_probability)}</div>
+        </div>
+    """).strip()
+
+
+def split_bracket_rows(rows):
+    midpoint = (len(rows) + 1) // 2
+    return rows[:midpoint], rows[midpoint:]
+
+
+def bracket_round_html(round_name, rows, depth, card_builder):
+    cards = "".join(card_builder(row) for row in rows)
+    if not cards:
+        cards = '<div class="wc-bracket-card"><div class="wc-bracket-card-meta">No matchups</div></div>'
+    return textwrap.dedent(f"""
+        <div class="wc-bracket-round wc-bracket-depth-{depth}">
+            <div class="wc-bracket-round-title">{html.escape(round_name)}</div>
+            {cards}
+        </div>
+    """).strip()
+
+
+def bracket_side_html(round_rows, side_classes, card_builder, reverse=False):
+    display_rows = list(reversed(round_rows)) if reverse else round_rows
+    depth_by_round = {round_name: depth for depth, (round_name, _) in enumerate(round_rows)}
+    columns = []
+    for index, (round_name, rows) in enumerate(display_rows):
+        columns.append(
+            textwrap.dedent(f"""
+                <div class="wc-bracket-column {side_classes[index]}">
+                    {bracket_round_html(round_name, rows, depth_by_round[round_name], card_builder)}
+                </div>
+            """).strip()
+        )
+    return "".join(columns)
+
+
+def bracket_center_html(finals, card_builder, third_place=None):
+    cards = "".join(card_builder(row) for row in finals)
+    if not cards:
+        cards = '<div class="wc-bracket-card"><div class="wc-bracket-card-meta">No final matchups</div></div>'
+    third_place_html = card_builder(third_place) if third_place is not None else ""
+    return textwrap.dedent(f"""
+        <div class="wc-bracket-column wc-bracket-center">
+            <div class="wc-bracket-round-title">Finals</div>
+            {cards}
+            {third_place_html}
+        </div>
+    """).strip()
+
+
+def build_most_likely_qualifiers(group_tables, simulation_summary):
+    group_winners = {}
+    group_runners_up = {}
+    third_place_candidates = []
+    probability_lookup = simulation_summary.set_index("team").to_dict("index")
+
+    for group, group_table in group_tables.groupby("group"):
+        ordered = group_table.sort_values("group_position").reset_index(drop=True)
+        group_winners[group] = ordered.loc[0, "team"]
+        group_runners_up[group] = ordered.loc[1, "team"]
+        third_team = ordered.loc[2, "team"]
+        third_summary = probability_lookup.get(third_team, {})
+        third_place_candidates.append(
+            {
+                "group": group,
+                "team": third_team,
+                "third_place_qualification_probability": third_summary.get(
+                    "third_place_qualification_probability",
+                    0,
+                ),
+                "round_of_32_probability": third_summary.get("round_of_32_probability", 0),
+            }
+        )
+
+    best_thirds = sorted(
+        third_place_candidates,
+        key=lambda row: (
+            -row["third_place_qualification_probability"],
+            -row["round_of_32_probability"],
+            row["team"],
+        ),
+    )[:8]
+    third_place_by_group = {row["group"]: row["team"] for row in best_thirds}
+
+    return {
+        "group_winners": group_winners,
+        "group_runners_up": group_runners_up,
+        "third_place_by_group": third_place_by_group,
+        "round_of_32_teams": (
+            list(group_winners.values())
+            + list(group_runners_up.values())
+            + list(third_place_by_group.values())
+        ),
+    }
+
+
+def get_annex_row_for_qualifiers(qualifiers, annex_allocations):
+    third_place_key = "".join(sorted(qualifiers["third_place_by_group"]))
+    annex_match = annex_allocations[annex_allocations["qualified_groups"] == third_place_key]
+    if annex_match.empty:
+        raise ValueError(f"No Annex C row found for third-place groups: {third_place_key}")
+    return annex_match.iloc[0].to_dict()
+
+
+def deterministic_knockout_round(round_name, matches, team_elos, match_probability_lookup):
+    winners = []
+    records = []
+    for match_index, match in enumerate(matches, start=1):
+        home_team = match["home_team"]
+        away_team = match["away_team"]
+        home_prob, draw_prob, away_prob = get_match_probabilities(
+            home_team,
+            away_team,
+            team_elos,
+            match_probability_lookup,
+        )
+        home_adv_prob, away_adv_prob = convert_to_advancement_probabilities(
+            home_prob,
+            draw_prob,
+            away_prob,
+        )
+        winner = home_team if home_adv_prob >= away_adv_prob else away_team
+        winners.append(winner)
+        records.append(
+            {
+                "round": round_name,
+                "match_id": match.get("match_id", match_index),
+                "home_team": home_team,
+                "away_team": away_team,
+                "winner": winner,
+                "home_probability": home_prob,
+                "draw_probability": draw_prob,
+                "away_probability": away_prob,
+                "home_advancement_probability": home_adv_prob,
+                "away_advancement_probability": away_adv_prob,
+            }
+        )
+    return winners, records
+
+
+def build_third_place_match(semi_final_records, team_elos, match_probability_lookup):
+    if len(semi_final_records) < 2:
+        return None
+
+    semi_losers = []
+    for record in semi_final_records[:2]:
+        loser = record["away_team"] if record["winner"] == record["home_team"] else record["home_team"]
+        semi_losers.append(loser)
+
+    home_team, away_team = semi_losers
+    home_prob, draw_prob, away_prob = get_match_probabilities(
+        home_team,
+        away_team,
+        team_elos,
+        match_probability_lookup,
+    )
+    home_adv_prob, away_adv_prob = convert_to_advancement_probabilities(
+        home_prob,
+        draw_prob,
+        away_prob,
+    )
+    winner = home_team if home_adv_prob >= away_adv_prob else away_team
+    return {
+        "round": "Third-Place Match",
+        "match_id": 0,
+        "home_team": home_team,
+        "away_team": away_team,
+        "winner": winner,
+        "home_probability": home_prob,
+        "draw_probability": draw_prob,
+        "away_probability": away_prob,
+        "home_advancement_probability": home_adv_prob,
+        "away_advancement_probability": away_adv_prob,
+        "is_third_place": True,
+    }
+
+
+def ordered_knockout_matches(round_name, teams):
+    return [
+        {
+            "round": round_name,
+            "match_id": index // 2 + 1,
+            "home_team": teams[index],
+            "away_team": teams[index + 1],
+        }
+        for index in range(0, len(teams), 2)
+    ]
+
+
+def build_most_likely_tournament_path(
+    group_tables,
+    group_predictions,
+    simulation_summary,
+    annex_allocations,
+    fixtures,
+):
+    if annex_allocations is None or fixtures is None:
+        return None
+
+    qualifiers = build_most_likely_qualifiers(group_tables, simulation_summary)
+    annex_row = get_annex_row_for_qualifiers(qualifiers, annex_allocations)
+    team_elos = build_team_elo_lookup(group_predictions)
+    match_probability_lookup = build_match_probability_lookup(group_predictions)
+
+    round_of_32_matches = build_round_of_32_matches(
+        qualifiers=qualifiers,
+        annex_row=annex_row,
+        fixtures=fixtures,
+    )
+    round_of_32_winners, round_of_32_records = deterministic_knockout_round(
+        "Round of 32",
+        round_of_32_matches,
+        team_elos,
+        match_probability_lookup,
+    )
+
+    round_of_16_winners, round_of_16_records = deterministic_knockout_round(
+        "Round of 16",
+        ordered_knockout_matches("Round of 16", round_of_32_winners),
+        team_elos,
+        match_probability_lookup,
+    )
+    quarter_final_winners, quarter_final_records = deterministic_knockout_round(
+        "Quarter Finals",
+        ordered_knockout_matches("Quarter Finals", round_of_16_winners),
+        team_elos,
+        match_probability_lookup,
+    )
+    semi_final_winners, semi_final_records = deterministic_knockout_round(
+        "Semi Finals",
+        ordered_knockout_matches("Semi Finals", quarter_final_winners),
+        team_elos,
+        match_probability_lookup,
+    )
+    _, final_records = deterministic_knockout_round(
+        "Finals",
+        ordered_knockout_matches("Finals", semi_final_winners),
+        team_elos,
+        match_probability_lookup,
+    )
+    third_place_record = build_third_place_match(
+        semi_final_records,
+        team_elos,
+        match_probability_lookup,
+    )
+
+    records = (
+        round_of_32_records
+        + round_of_16_records
+        + quarter_final_records
+        + semi_final_records
+        + final_records
+    )
+    if third_place_record is not None:
+        records.append(third_place_record)
+    return records
+
+
+def split_records_for_bracket(records):
+    records_by_round = {
+        round_name: [
+            record
+            for record in records
+            if record["round"] == round_name
+        ]
+        for round_name in KNOCKOUT_ROUNDS
+    }
+    left_round_rows = []
+    right_round_rows = []
+    for round_name in KNOCKOUT_ROUNDS[:4]:
+        left_rows, right_rows = split_bracket_rows(records_by_round[round_name])
+        left_round_rows.append((round_name, left_rows))
+        right_round_rows.append((round_name, right_rows))
+    third_place_records = [
+        record
+        for record in records
+        if record["round"] == "Third-Place Match"
+    ]
+    third_place = third_place_records[0] if third_place_records else None
+    return left_round_rows, records_by_round["Finals"], right_round_rows, third_place
+
+
+def render_two_sided_bracket(left_round_rows, finals, right_round_rows, card_builder, third_place=None):
+    bracket_html = textwrap.dedent(f"""
+        <div class="wc-bracket-mobile-note">Bracket scrolls horizontally on smaller screens.</div>
+        <div class="wc-bracket-viewport">
+            <div class="wc-bracket-board">
+                {bracket_side_html(left_round_rows, ["wc-bracket-left", "wc-bracket-left", "wc-bracket-left-middle", "wc-bracket-left-middle"], card_builder)}
+                {bracket_center_html(finals, card_builder, third_place)}
+                {bracket_side_html(right_round_rows, ["wc-bracket-right-middle", "wc-bracket-right-middle", "wc-bracket-right", "wc-bracket-right"], card_builder, reverse=True)}
+            </div>
+        </div>
+    """).strip()
+    st.markdown(bracket_html, unsafe_allow_html=True)
+
+
+def render_official_bracket_grid(fixtures):
+    knockout_fixtures = get_knockout_fixtures(fixtures)
+    if knockout_fixtures is None:
+        st.warning(f"Optional fixture skeleton missing: {FIXTURES_PATH}.")
+        return
+
+    left_round_rows = []
+    right_round_rows = []
+    for round_name in KNOCKOUT_ROUNDS[:4]:
+        round_rows = [
+            row.to_dict()
+            for _, row in knockout_fixtures[
+                knockout_fixtures["Round Number"] == round_name
+            ].sort_values("Match Number").iterrows()
+        ]
+        left_rows, right_rows = split_bracket_rows(round_rows)
+        left_round_rows.append((round_name, left_rows))
+        right_round_rows.append((round_name, right_rows))
+
+    finals = [
+        row.to_dict()
+        for _, row in knockout_fixtures[
+            knockout_fixtures["Round Number"] == "Finals"
+        ].sort_values("Match Number").iterrows()
+    ]
+    final_rows = []
+    third_place = None
+    for row in finals:
+        if int(row["Match Number"]) == 103:
+            row["is_third_place"] = True
+            row["Home Team"] = "Loser SF1"
+            row["Away Team"] = "Loser SF2"
+            third_place = row
+        else:
+            final_rows.append(row)
+
+    render_two_sided_bracket(
+        left_round_rows,
+        final_rows,
+        right_round_rows,
+        official_bracket_card_html,
+        third_place=third_place,
+    )
+
+
+def render_simulated_bracket_grid(
+    group_tables,
+    group_predictions,
+    simulation_summary,
+    annex_allocations,
+    fixtures,
+):
+    path_records = build_most_likely_tournament_path(
+        group_tables=group_tables,
+        group_predictions=group_predictions,
+        simulation_summary=simulation_summary,
+        annex_allocations=annex_allocations,
+        fixtures=fixtures,
+    )
+    if path_records is None:
+        st.warning(
+            f"Required bracket inputs missing. Check {ANNEX_C_PATH} and {FIXTURES_PATH}."
+        )
+        return
+
+    left_round_rows, finals, right_round_rows, third_place = split_records_for_bracket(path_records)
+    render_two_sided_bracket(
+        left_round_rows,
+        finals,
+        right_round_rows,
+        simulated_bracket_card_html,
+        third_place=third_place,
+    )
+
+
+def build_bracket_round_summary(fixtures, match_summary):
+    rows = []
+    knockout_fixtures = get_knockout_fixtures(fixtures)
+    for round_name in KNOCKOUT_ROUNDS:
+        fixture_count = 0
+        if knockout_fixtures is not None:
+            fixture_count = len(knockout_fixtures[knockout_fixtures["Round Number"] == round_name])
+
+        simulated_matchup_count = 0
+        most_common_matchup = "Unavailable"
+        if match_summary is not None:
+            round_matchups = match_summary[match_summary["round"] == round_name]
+            simulated_matchup_count = len(round_matchups)
+            if not round_matchups.empty:
+                top_matchup = round_matchups.sort_values("simulations", ascending=False).iloc[0]
+                most_common_matchup = (
+                    f"{team_label(top_matchup['home_team'])} vs "
+                    f"{team_label(top_matchup['away_team'])}"
+                )
+
+        rows.append(
+            {
+                "round": round_name,
+                "official_fixture_slots": fixture_count,
+                "simulated_matchups": simulated_matchup_count,
+                "most_common_matchup": most_common_matchup,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def get_probability_row(simulation_summary, sort_column, filtered=None):
+    data = simulation_summary if filtered is None else filtered
+    if data.empty:
+        return None
+    return data.sort_values(sort_column, ascending=False).iloc[0]
+
+
+def build_bracket_summary_items(simulation_summary, match_summary):
+    champion = get_probability_row(simulation_summary, "champion_probability")
+    final_match = None
+    if match_summary is not None:
+        final_rows = match_summary[match_summary["round"] == "Finals"]
+        if not final_rows.empty:
+            final_match = final_rows.sort_values("simulations", ascending=False).iloc[0]
+
+    dark_horse_pool = simulation_summary[simulation_summary["group_winner_probability"] < 0.4]
+    dark_horse = get_probability_row(simulation_summary, "champion_probability", dark_horse_pool)
+
+    upset_pool = simulation_summary[simulation_summary["round_of_32_probability"] < 0.85]
+    upset_candidate = get_probability_row(simulation_summary, "round_of_16_probability", upset_pool)
+
+    items = []
+    if champion is not None:
+        items.append(
+            (
+                "Most Likely Champion",
+                team_label(champion["team"]),
+                format_percent(champion["champion_probability"]),
+            )
+        )
+    if final_match is not None:
+        items.append(
+            (
+                "Most Likely Final",
+                f"{team_label(final_match['home_team'])} vs {team_label(final_match['away_team'])}",
+                f"{int(final_match['simulations'])} simulations",
+            )
+        )
+    if dark_horse is not None:
+        items.append(
+            (
+                "Dark Horse",
+                team_label(dark_horse["team"]),
+                format_percent(dark_horse["champion_probability"]),
+            )
+        )
+    if upset_candidate is not None:
+        items.append(
+            (
+                "Upset Candidate",
+                team_label(upset_candidate["team"]),
+                f"{format_percent(upset_candidate['round_of_16_probability'])} R16",
+            )
+        )
+    return items
+
+
+def render_bracket_summary(simulation_summary, match_summary):
+    items = build_bracket_summary_items(simulation_summary, match_summary)
+    if not items:
+        return
+    item_html = "".join(
+        textwrap.dedent(f"""
+            <div class="wc-bracket-summary-item">
+                <div class="wc-bracket-summary-label">{html.escape(label)}</div>
+                <div class="wc-bracket-summary-value">{html.escape(value)}</div>
+                <div class="wc-bracket-summary-sub">{html.escape(sub_value)}</div>
+            </div>
+        """).strip()
+        for label, value, sub_value in items
+    )
+    st.markdown(
+        f'<div class="wc-bracket-summary-grid">{item_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def filter_group_matches(group_predictions):
@@ -1331,6 +2248,40 @@ def render_match_page(group_predictions, match_summary):
         render_knockout_match_detail(match_summary)
 
 
+def render_bracket_page(
+    fixtures,
+    match_summary,
+    simulation_summary,
+    group_tables,
+    group_predictions,
+    annex_allocations,
+):
+    render_page_header(
+        "Bracket Page",
+        "Official knockout fixture slots and the most common simulated matchups by round.",
+    )
+
+    render_bracket_summary(simulation_summary, match_summary)
+
+    summary = build_bracket_round_summary(fixtures, match_summary)
+    st.subheader("Bracket Round Summary")
+    st.dataframe(summary, use_container_width=True, hide_index=True)
+
+    official_tab, simulated_tab = st.tabs(["Official fixture skeleton", "Simulation matchup view"])
+    with official_tab:
+        st.caption("Round of 32 placeholders are official fixture slots; later rounds remain to be announced.")
+        render_official_bracket_grid(fixtures)
+    with simulated_tab:
+        st.caption("Single coherent most-likely path built from projected group finishers and deterministic knockout advancement.")
+        render_simulated_bracket_grid(
+            group_tables,
+            group_predictions,
+            simulation_summary,
+            annex_allocations,
+            fixtures,
+        )
+
+
 def render_simulation_results(simulation_summary):
     render_page_header(
         "Simulation Results",
@@ -1494,6 +2445,8 @@ def main():
     group_tables = load_group_tables()
     simulation_summary = load_simulation_summary()
     match_summary = load_match_simulation_summary()
+    fixtures = load_fixture_skeleton()
+    annex_allocations = load_annex_allocations()
     metadata = load_metadata()
     selected_page = render_sidebar_nav()
 
@@ -1507,6 +2460,15 @@ def main():
         render_team_page(group_predictions, group_tables, simulation_summary, match_summary)
     elif selected_page == "Match Page":
         render_match_page(group_predictions, match_summary)
+    elif selected_page == "Bracket Page":
+        render_bracket_page(
+            fixtures,
+            match_summary,
+            simulation_summary,
+            group_tables,
+            group_predictions,
+            annex_allocations,
+        )
     elif selected_page == "Simulation Results":
         render_simulation_results(simulation_summary)
     elif selected_page == "Knockout Summary":
