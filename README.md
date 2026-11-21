@@ -84,3 +84,20 @@ LightGBM
 
 For now, the focus is on building a clean and understandable first version.
 
+- Dashboard
+
+The project includes a Streamlit dashboard for viewing the 2026 World Cup group predictions and tournament simulation results.
+
+Install dashboard dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run the dashboard:
+
+```bash
+streamlit run app.py
+```
+
+The dashboard reads existing CSV and JSON outputs from the `results` and `data` folders. It does not retrain the model or rerun simulations.

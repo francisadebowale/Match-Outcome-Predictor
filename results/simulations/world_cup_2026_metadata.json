@@ -1,0 +1,30 @@
+{
+  "base_seed": 2026,
+  "number_of_simulations": 10000,
+  "created_at": "2026-06-15T14:47:43.646132+00:00",
+  "input_files": [
+    "data/raw/world_cup_2026/fixtures.csv",
+    "results/predictions/world_cup_2026_group_predictions_v1.csv",
+    "data/raw/world_cup_2026/annex_c_third_place_allocation.csv"
+  ],
+  "input_fingerprint": "064e2368e04f411e9774abee8758b3cec7162753f1e4400871ad77839a805ab0",
+  "model_name": "Multiclass Logistic Regression",
+  "draw_weight": 1.6,
+  "feature_set": [
+    "elo_difference",
+    "home_advantage",
+    "home_goals_for_avg",
+    "home_goals_against_avg",
+    "away_goals_for_avg",
+    "away_goals_against_avg"
+  ],
+  "annex_c_rows": 495,
+  "bracket_method": "official_with_annex_c",
+  "draw_handling_method": "knockout_draw_probability_redistributed_proportionally",
+  "tie_breaker_method": "points_wins_elo_team_name",
+  "notes": [
+    "Tournament simulation uses outcome-level probabilities, not simulated scores.",
+    "Knockout probabilities use exact group-stage prediction rows when available and Elo fallback otherwise.",
+    "Full per-simulation match output is aggregated to keep dashboard data manageable."
+  ]
+}
